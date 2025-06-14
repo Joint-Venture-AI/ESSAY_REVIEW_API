@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Essay Evaluator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background-color: #f4f4f4;
+      color: #333;
+    }
+    h1, h2 {
+      color: #2c3e50;
+    }
+    .section {
+      background: #fff;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .highlight-delete {
+      text-decoration: line-through;
+      color: blue;
+    }
+    .highlight-add {
+      border-bottom: 2px solid red;
+      background-color: #ffe6e6;
+    }
+    .sources {
+      color: red;
+      font-weight: bold;
+    }
+    .tagged span {
+      margin: 0 3px;
+    }
+    .upload-form {
+      background: #fff;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .upload-form input[type="file"] {
+      margin: 1rem 0;
+      padding: 0.5rem;
+    }
+    .upload-form button {
+      background-color: #2c3e50;
+      color: white;
+      border: none;
+      padding: 0.7rem 1.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .upload-form button:hover {
+      background-color: #1a252f;
+    }
+    #evaluation-report {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Essay Evaluator</h1>
+
+  <div class="upload-form">
+    <h2>Upload Essay (.docx)</h2>
+    <form action="/" method="post" enctype="multipart/form-data">
+      <input type="file" name="docx_file" accept=".docx" required>
+      <button type="submit">Analyze Essay</button>
+    </form>
+  </div>
+
+  <div id="evaluation-report">
+    <h2>Essay Evaluation Report</h2>
+
+    <div class="section">
+      <h2>Essay Type</h2>
+      <p id="essayType">Loading...</p>
+    </div>
+
+    <div class="section">
+      <h2>Analysis Report</h2>
+      <p id="analysis">Loading...</p>
+    </div>
+
+    <div class="section tagged">
+      <h2>Tagged Corrections</h2>
+      <p id="tagged">Loading...</p>
+    </div>
+
+    <div class="section">
+      <h2>Unreliable Sources</h2>
+      <p id="sources">Loading...</p>
+    </div>
+  </div>
+
+  <script>
+    // For demonstration purposes only (remove in production)
+    // This simulates receiving data from the server
+    if (window.location.search.includes('demo=true')) {
+      document.getElementById('evaluation-report').style.display = 'block';
+
+      const demoData = {
+        essayType: "Argumentative",
+        analysis: "The essay presents a clear thesis and provides supporting evidence. However, it lacks strong counterarguments. Wikipedia is used as a source, which may reduce credibility.",
+        tagged: "The essay [DELETE:utilizes] [ADD:uses] [DELETE:alot] [ADD:a lot] of [DELETE:Wikipedia] [ADD:academic sources] for its [ADD:claims].",
+        sources: ["wikipedia.org"]
+      };
+
+      document.getElementById("essayType").textContent = demoData.essayType;
+      document.getElementById("analysis").textContent = demoData.analysis;
+
+      const taggedContainer = document.getElementById("tagged");
+      const taggedHTML = demoData.tagged.replace(/\[DELETE:(.*?)\]/g, '<span class="highlight-delete">$1</span>')
+                                  .replace(/\[ADD:(.*?)\]/g, '<span class="highlight-add">$1</span>');
+      taggedContainer.innerHTML = taggedHTML;
+
+      const sourceContainer = document.getElementById("sources");
+      sourceContainer.innerHTML = demoData.sources.length
+        ? `<span class="sources">⚠️ ${demoData.sources.join(", ")}</span>`
+        : "No unreliable sources found.";
+    }
+  </script>
+</body>
+</html>

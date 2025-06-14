@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Essay Compare Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .result { margin-top: 20px; }
+    .change { margin-bottom: 10px; }
+    ins { background-color: #d4fcdc; text-decoration: none; }
+    del { background-color: #ffd6d6; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <h2>Compare Two Essays (.docx)</h2>
+
+  <form id="compareForm">
+    <label>Upload Essay Version 1:
+      <input type="file" name="docx_file_1" accept=".docx" required>
+    </label>
+    <br><br>
+    <label>Upload Essay Version 2:
+      <input type="file" name="docx_file_2" accept=".docx" required>
+    </label>
+    <br><br>
+    <button type="submit">Compare Essays</button>
+  </form>
+
+  <div class="result" id="result"></div>
+
+  <script>
+    const form = document.getElementById('compareForm');
+    const resultDiv = document.getElementById('result');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      resultDiv.innerHTML = "Comparing essays...";
+
+      try {
+        const response = await fetch('http://localhost:5000/api/compare', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to compare essays');
+        }
+
+        const data = await response.json();
+
+        // Display summary
+        resultDiv.innerHTML = `<h3>Summary:</h3><p>${data.analysis_summary}</p>`;
+
+        // Display changes
+        if (Array.isArray(data.key_changes) && data.key_changes.length > 0) {
+          resultDiv.innerHTML += `<h3>Paragraph Changes:</h3>`;
+          data.key_changes.forEach(change => {
+            const htmlChange = change.change
+              .replace(/\[DELETE:(.*?)\]/g, '<del>$1</del>')
+              .replace(/\[ADD:(.*?)\]/g, '<ins>$1</ins>');
+            resultDiv.innerHTML += `<div class="change"><strong>Paragraph ${change.paragraph_index}:</strong><br>${htmlChange}</div>`;
+          });
+        } else {
+          resultDiv.innerHTML += `<p>No significant differences found.</p>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<p style="color: red;">Error: ${err.message}</p>`;
+      }
+    });
+  </script>
+</body>
+</html>
