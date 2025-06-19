@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Essay Analysis</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      max-width: 900px;
+    }
+    h1 {
+      color: #333;
+    }
+    input[type="file"] {
+      margin: 15px 0;
+    }
+    button {
+      padding: 8px 15px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #results {
+      margin-top: 30px;
+      white-space: pre-wrap;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    .delete {
+      background-color: #ffcccc;
+      color: #a00;
+      font-weight: bold;
+      text-decoration: line-through;
+      padding: 2px 4px;
+      margin: 0 1px;
+      border-radius: 2px;
+    }
+    .add {
+      background-color: #ccffcc;
+      color: #060;
+      font-weight: bold;
+      padding: 2px 4px;
+      margin: 0 1px;
+      border-radius: 2px;
+    }
+    .section-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      color: #222;
+    }
+  </style>
+</head>
+<body>
+  <h1>Essay Analysis Upload</h1>
+  <p>Select a <code>.docx</code> file to analyze:</p>
+  <input type="file" id="docxFile" accept=".docx" />
+  <br />
+  <button id="analyzeBtn">Analyze Essay</button>
+
+  <div id="results"></div>
+
+  <script>
+    function highlightTaggedText(text) {
+      return text
+        .replace(/\[DELETE:([^\]]+)\]/g, '<span class="delete">$1</span>')
+        .replace(/\[ADD:([^\]]+)\]/g, '<span class="add">$1</span>');
+    }
+
+    document.getElementById("analyzeBtn").addEventListener("click", async () => {
+      const fileInput = document.getElementById("docxFile");
+      const resultsDiv = document.getElementById("results");
+      resultsDiv.innerHTML = "Analyzing... Please wait.";
+
+      if (fileInput.files.length === 0) {
+        resultsDiv.innerHTML = "<span style='color:red;'>Please select a .docx file first.</span>";
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (!file.name.endsWith(".docx")) {
+        resultsDiv.innerHTML = "<span style='color:red;'>Only .docx files are supported.</span>";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("docx_file", file);
+
+      try {
+        const response = await fetch("http://127.0.0.1:5000/api/full", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          resultsDiv.innerHTML = `<span style="color:red;">Error: ${errorData.error || response.statusText}</span>`;
+          return;
+        }
+
+        const data = await response.json();
+
+        resultsDiv.innerHTML = `
+          <div class="section-title">Essay Type</div>
+          <div>${data.essay_type}</div>
+
+          <div class="section-title">Tagged Differences</div>
+          <div>${highlightTaggedText(data.tagged_differences)}</div>
+
+          <div class="section-title">Unreliable Sources</div>
+          <div>${data.unreliable_sources.length > 0 ? data.unreliable_sources.join(", ") : "None"}</div>
+        `;
+      } catch (err) {
+        resultsDiv.innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
+      }
+    });
+  </script>
+</body>
+</html>
