@@ -91,7 +91,7 @@ def full_analysis():
             return jsonify({"error": "Invalid file format, must be .docx"}), 400
 
         essay_text = extract_text_from_docx(file.stream)
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return jsonify({"error": "Missing API Key"}), 500
 
