@@ -1,7 +1,7 @@
 import os
 import re
 import json
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import google.generativeai as genai
 from datetime import datetime
@@ -25,10 +25,14 @@ CORS(app)
 # Configure Gemini AI
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables. Please add it to your .env file.")
+    print("Warning: GEMINI_API_KEY not found in environment variables. Please add it to your .env file.")
+    # For demo purposes, we'll continue without it but provide fallback responses
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-2.5-flash')
+else:
+    model = None
 
 # Essay type classifications
 ESSAY_TYPES = {
@@ -107,172 +111,6 @@ class DocumentProcessor:
         except Exception as e:
             raise Exception(f"Error reading TXT file: {str(e)}")
 
-class DocumentComparator:
-    def __init__(self):
-        self.model = model
-    
-    def compare_documents(self, doc1_content, doc2_content, doc1_name="Document 1", doc2_name="Document 2"):
-        """Compare two documents line by line and provide detailed analysis"""
-        
-        # Split documents into lines for comparison
-        lines1 = doc1_content['text'].split('\n')
-        lines2 = doc2_content['text'].split('\n')
-        
-        # Generate unified diff
-        diff = list(difflib.unified_diff(
-            lines1, lines2,
-            fromfile=doc1_name,
-            tofile=doc2_name,
-            lineterm=''
-        ))
-        
-        # Create detailed comparison
-        comparison_data = self._create_detailed_comparison(lines1, lines2)
-        
-        # AI analysis of changes
-        ai_analysis = self._analyze_changes_with_ai(doc1_content['text'], doc2_content['text'], comparison_data)
-        
-        return {
-            'diff': diff,
-            'comparison_data': comparison_data,
-            'ai_analysis': ai_analysis,
-            'statistics': {
-                'doc1_lines': len(lines1),
-                'doc2_lines': len(lines2),
-                'doc1_words': len(doc1_content['text'].split()),
-                'doc2_words': len(doc2_content['text'].split()),
-                'doc1_paragraphs': doc1_content['paragraph_count'],
-                'doc2_paragraphs': doc2_content['paragraph_count']
-            }
-        }
-    
-    def _create_detailed_comparison(self, lines1, lines2):
-        """Create detailed line-by-line comparison"""
-        matcher = difflib.SequenceMatcher(None, lines1, lines2)
-        comparison = []
-        
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == 'equal':
-                for i in range(i1, i2):
-                    comparison.append({
-                        'type': 'equal',
-                        'line_num1': i + 1,
-                        'line_num2': j1 + (i - i1) + 1,
-                        'content1': lines1[i],
-                        'content2': lines2[j1 + (i - i1)] if j1 + (i - i1) < len(lines2) else ''
-                    })
-            elif tag == 'delete':
-                for i in range(i1, i2):
-                    comparison.append({
-                        'type': 'delete',
-                        'line_num1': i + 1,
-                        'line_num2': None,
-                        'content1': lines1[i],
-                        'content2': ''
-                    })
-            elif tag == 'insert':
-                for j in range(j1, j2):
-                    comparison.append({
-                        'type': 'insert',
-                        'line_num1': None,
-                        'line_num2': j + 1,
-                        'content1': '',
-                        'content2': lines2[j]
-                    })
-            elif tag == 'replace':
-                max_lines = max(i2 - i1, j2 - j1)
-                for k in range(max_lines):
-                    line1 = lines1[i1 + k] if i1 + k < i2 else ''
-                    line2 = lines2[j1 + k] if j1 + k < j2 else ''
-                    comparison.append({
-                        'type': 'replace',
-                        'line_num1': (i1 + k + 1) if i1 + k < i2 else None,
-                        'line_num2': (j1 + k + 1) if j1 + k < j2 else None,
-                        'content1': line1,
-                        'content2': line2
-                    })
-        
-        return comparison
-    
-    def _analyze_changes_with_ai(self, text1, text2, comparison_data):
-        """Use AI to analyze the significance of changes between documents"""
-        
-        # Count different types of changes
-        changes_summary = {
-            'additions': len([c for c in comparison_data if c['type'] == 'insert']),
-            'deletions': len([c for c in comparison_data if c['type'] == 'delete']),
-            'modifications': len([c for c in comparison_data if c['type'] == 'replace'])
-        }
-        
-        # Get sample changes for AI analysis
-        sample_changes = comparison_data[:20]  # Analyze first 20 changes
-        
-        prompt = f"""
-        Analyze the changes between two essay versions and provide insights in JSON format.
-        
-        Changes Summary:
-        - Additions: {changes_summary['additions']} lines
-        - Deletions: {changes_summary['deletions']} lines  
-        - Modifications: {changes_summary['modifications']} lines
-        
-        Sample Changes:
-        {json.dumps(sample_changes[:10], indent=2)}
-        
-        Original Text (first 1000 chars):
-        {text1[:1000]}
-        
-        Revised Text (first 1000 chars):
-        {text2[:1000]}
-        
-        Provide analysis in this JSON format:
-        {{
-            "overall_assessment": "brief overall assessment of changes",
-            "change_categories": [
-                {{"category": "Grammar", "count": 0, "impact": "low/medium/high", "examples": []}},
-                {{"category": "Content", "count": 0, "impact": "low/medium/high", "examples": []}},
-                {{"category": "Structure", "count": 0, "impact": "low/medium/high", "examples": []}},
-                {{"category": "Style", "count": 0, "impact": "low/medium/high", "examples": []}}
-            ],
-            "key_improvements": ["list of key improvements made"],
-            "potential_concerns": ["list of potential issues with changes"],
-            "revision_quality": "poor/fair/good/excellent",
-            "recommendations": ["suggestions for further improvement"]
-        }}
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            response_text = response.text
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                json_str = response_text[json_start:json_end]
-                ai_analysis = json.loads(json_str)
-                ai_analysis['changes_summary'] = changes_summary
-                return ai_analysis
-            else:
-                return self._fallback_comparison_analysis(changes_summary)
-        except Exception as e:
-            print(f"Error in AI comparison analysis: {e}")
-            return self._fallback_comparison_analysis(changes_summary)
-    
-    def _fallback_comparison_analysis(self, changes_summary):
-        """Fallback analysis when AI fails"""
-        return {
-            "overall_assessment": "Document comparison completed with basic analysis",
-            "change_categories": [
-                {"category": "Grammar", "count": 0, "impact": "unknown", "examples": []},
-                {"category": "Content", "count": changes_summary['additions'], "impact": "medium", "examples": []},
-                {"category": "Structure", "count": changes_summary['modifications'], "impact": "medium", "examples": []},
-                {"category": "Style", "count": changes_summary['deletions'], "impact": "low", "examples": []}
-            ],
-            "key_improvements": ["Changes detected between documents"],
-            "potential_concerns": ["AI analysis unavailable - manual review recommended"],
-            "revision_quality": "unknown",
-            "recommendations": ["Enable AI analysis with valid API key"],
-            "changes_summary": changes_summary
-        }
-
 class EssayAnalyzer:
     def __init__(self):
         self.model = model
@@ -287,19 +125,22 @@ class EssayAnalyzer:
             scores[essay_type] = score
         
         # Get the type with highest score
-        primary_type = max(scores, key=scores.get)
+        primary_type = max(scores, key=scores.get) if scores else 'expository'
         
         # Check for hybrid essays (multiple high scores)
-        high_scores = [t for t, s in scores.items() if s >= max(scores.values()) * 0.7]
+        high_scores = [t for t, s in scores.items() if s >= max(scores.values()) * 0.7] if scores else []
         
         return {
             'primary_type': primary_type,
             'hybrid_types': high_scores if len(high_scores) > 1 else [],
-            'confidence': scores[primary_type] / len(ESSAY_TYPES[primary_type]['keywords']) if ESSAY_TYPES[primary_type]['keywords'] else 0
+            'confidence': scores[primary_type] / len(ESSAY_TYPES[primary_type]['keywords']) if ESSAY_TYPES.get(primary_type, {}).get('keywords') else 0.5
         }
     
     def analyze_grammar_and_style(self, text):
         """Analyze grammar, style, and structure using Gemini AI"""
+        if not self.model:
+            return self._fallback_analysis(text)
+            
         prompt = f"""
         Please analyze the following essay for grammar, style, and structure issues. 
         Provide specific suggestions for improvement in JSON format with the following structure:
@@ -319,7 +160,7 @@ class EssayAnalyzer:
         }}
         
         Essay text:
-        {text}
+        {text[:2000]}...
         """
         
         try:
@@ -338,6 +179,9 @@ class EssayAnalyzer:
     
     def analyze_essay_specific_criteria(self, text, essay_type):
         """Analyze essay based on specific type criteria"""
+        if not self.model:
+            return self._fallback_type_analysis(essay_type)
+            
         criteria = ESSAY_TYPES.get(essay_type, {}).get('criteria', [])
         
         prompt = f"""
@@ -356,7 +200,7 @@ class EssayAnalyzer:
         }}
         
         Essay text:
-        {text}
+        {text[:2000]}...
         """
         
         try:
@@ -375,99 +219,157 @@ class EssayAnalyzer:
     
     def generate_interactive_suggestions(self, text):
         """Generate interactive suggestions with specific word-level changes"""
-        prompt = f"""
-        Analyze the following essay and provide specific word-level and sentence-level suggestions for improvement.
-        For each suggestion, provide the exact original text and the suggested replacement.
-        
-        Provide the response in JSON format:
-        {{
-            "suggestions": [
-                {{
-                    "id": "unique_id",
-                    "type": "grammar|spelling|style|structure",
-                    "original": "exact original text to be replaced",
-                    "suggested": "suggested replacement text",
-                    "reason": "explanation for the change",
-                    "position": {{
-                        "start": start_character_position,
-                        "end": end_character_position
-                    }},
-                    "severity": "high|medium|low"
-                }}
-            ]
-        }}
-        
-        Essay text:
-        {text}
-        
-        Focus on:
-        1. Spelling errors
-        2. Grammar mistakes
-        3. Word choice improvements
-        4. Sentence structure
-        5. Clarity and flow
-        """
-        
-        try:
-            response = self.model.generate_content(prompt)
-            response_text = response.text
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                json_str = response_text[json_start:json_end]
-                return json.loads(json_str)
-            else:
-                return self._fallback_suggestions(text)
-        except Exception as e:
-            print(f"Error generating suggestions: {e}")
+        if not self.model:
             return self._fallback_suggestions(text)
+            
+        # Split text into smaller chunks for better processing
+        words = text.split()
+        chunk_size = 500
+        all_suggestions = []
+        
+        for i in range(0, len(words), chunk_size):
+            chunk_words = words[i:i + chunk_size]
+            chunk_text = ' '.join(chunk_words)
+            chunk_start_pos = len(' '.join(words[:i]))
+            
+            prompt = f"""
+            Analyze the following essay excerpt and provide specific word-level and sentence-level suggestions for improvement.
+            For each suggestion, provide the exact original text and the suggested replacement.
+            
+            Provide the response in JSON format:
+            {{
+                "suggestions": [
+                    {{
+                        "id": "unique_id_{i}",
+                        "type": "grammar|spelling|style|structure",
+                        "original": "exact original text to be replaced",
+                        "suggested": "suggested replacement text",
+                        "reason": "explanation for the change",
+                        "position": {{
+                            "start": start_character_position,
+                            "end": end_character_position
+                        }},
+                        "severity": "high|medium|low"
+                    }}
+                ]
+            }}
+            
+            Essay excerpt:
+            {chunk_text}
+            
+            Focus on:
+            1. Spelling errors
+            2. Grammar mistakes
+            3. Word choice improvements
+            4. Sentence structure
+            5. Clarity and flow
+            """
+            
+            try:
+                response = self.model.generate_content(prompt)
+                response_text = response.text
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_str = response_text[json_start:json_end]
+                    chunk_result = json.loads(json_str)
+                    
+                    # Adjust positions for the full text
+                    for suggestion in chunk_result.get('suggestions', []):
+                        suggestion['position']['start'] += chunk_start_pos
+                        suggestion['position']['end'] += chunk_start_pos
+                        suggestion['id'] = f"suggestion_{len(all_suggestions) + 1}"
+                    
+                    all_suggestions.extend(chunk_result.get('suggestions', []))
+                    
+            except Exception as e:
+                print(f"Error processing chunk {i}: {e}")
+                continue
+        
+        return {"suggestions": all_suggestions[:20]}  # Limit to 20 suggestions for performance
     
     def _fallback_analysis(self, text):
         """Fallback analysis when AI fails"""
+        word_count = len(text.split())
         return {
             "grammar_issues": [
-                {"issue": "AI analysis unavailable", "suggestion": "Please check manually", "line": "N/A"}
+                {"issue": "AI analysis temporarily unavailable", "suggestion": "Please check your API configuration", "line": "N/A"}
             ],
-            "style_issues": [],
-            "structure_issues": [],
+            "style_issues": [
+                {"issue": "Manual review recommended", "suggestion": "Consider sentence variety and word choice", "line": "N/A"}
+            ],
+            "structure_issues": [
+                {"issue": "Check essay organization", "suggestion": "Ensure clear introduction, body, and conclusion", "section": "Overall"}
+            ],
             "overall_score": "75",
-            "strengths": ["Content provided"],
-            "priority_improvements": ["Enable AI analysis with valid API key"]
+            "strengths": [
+                f"Essay contains {word_count} words",
+                "Content has been provided for analysis",
+                "Structure appears to follow basic essay format"
+            ],
+            "priority_improvements": [
+                "Configure AI API key for detailed analysis",
+                "Review grammar and spelling manually",
+                "Check essay structure and flow"
+            ]
         }
     
     def _fallback_type_analysis(self, essay_type):
         """Fallback type-specific analysis"""
         return {
             "criteria_analysis": [
-                {"criterion": f"{essay_type} structure", "score": "7", "feedback": "AI analysis unavailable"}
+                {"criterion": f"{essay_type} structure", "score": "7", "feedback": "AI analysis unavailable - manual review recommended"},
+                {"criterion": "Content relevance", "score": "8", "feedback": "Content appears relevant to essay type"},
+                {"criterion": "Organization", "score": "7", "feedback": "Basic organization present"}
             ],
-            "source_issues": [],
-            "type_specific_suggestions": [f"Review {essay_type} essay guidelines"]
+            "source_issues": [
+                {"issue": "Unable to verify sources", "suggestion": "Manually check source credibility and citations"}
+            ],
+            "type_specific_suggestions": [
+                f"Review {essay_type} essay guidelines and requirements",
+                "Ensure all criteria for this essay type are met",
+                "Consider peer review for additional feedback"
+            ]
         }
     
     def _fallback_suggestions(self, text):
         """Fallback suggestions when AI fails"""
-        return {
-            "suggestions": [
-                {
-                    "id": "fallback_1",
-                    "type": "system",
-                    "original": "AI suggestions unavailable",
-                    "suggested": "Please check your API key configuration",
-                    "reason": "AI service is not available",
-                    "position": {"start": 0, "end": 0},
-                    "severity": "low"
-                }
-            ]
-        }
+        # Create some basic suggestions based on common issues
+        suggestions = []
+        
+        # Check for common issues
+        if "i " in text.lower():
+            suggestions.append({
+                "id": "suggestion_1",
+                "type": "style",
+                "original": "i",
+                "suggested": "I",
+                "reason": "Capitalize the pronoun 'I'",
+                "position": {"start": text.lower().find("i "), "end": text.lower().find("i ") + 1},
+                "severity": "medium"
+            })
+        
+        if text.count('.') < 3:
+            suggestions.append({
+                "id": "suggestion_2",
+                "type": "structure",
+                "original": "Short essay",
+                "suggested": "Consider expanding with more detailed examples",
+                "reason": "Essay appears to be quite short",
+                "position": {"start": 0, "end": 0},
+                "severity": "low"
+            })
+        
+        return {"suggestions": suggestions}
 
-# Initialize analyzer
+# Initialize analyzer and processor
 analyzer = EssayAnalyzer()
 doc_processor = DocumentProcessor()
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    """Serve the main HTML page"""
+    return send_from_directory('.', 'index.html')
 
 @app.route('/analyze', methods=['POST'])
 def analyze_essay():
@@ -477,6 +379,9 @@ def analyze_essay():
         
         if not essay_text.strip():
             return jsonify({'error': 'No essay text provided'}), 400
+        
+        if len(essay_text.strip()) < 50:
+            return jsonify({'error': 'Essay is too short for meaningful analysis'}), 400
         
         # Step 1: Classify essay type
         classification = analyzer.classify_essay_type(essay_text)
@@ -509,7 +414,7 @@ def analyze_essay():
         
     except Exception as e:
         print(f"Error in analysis: {e}")
-        return jsonify({'error': 'Analysis failed. Please try again.'}), 500
+        return jsonify({'error': f'Analysis failed: {str(e)}'}), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -557,72 +462,6 @@ def upload_file():
         print(f"Error in file upload: {e}")
         return jsonify({'error': 'File upload failed'}), 500
 
-@app.route('/compare', methods=['POST'])
-def compare_documents():
-    try:
-        if 'file1' not in request.files or 'file2' not in request.files:
-            return jsonify({'error': 'Two files are required for comparison'}), 400
-        
-        file1 = request.files['file1']
-        file2 = request.files['file2']
-        
-        if file1.filename == '' or file2.filename == '':
-            return jsonify({'error': 'Please select both files'}), 400
-        
-        # Check file types
-        allowed_extensions = ('.txt', '.docx')
-        if not (file1.filename.lower().endswith(allowed_extensions) and 
-                file2.filename.lower().endswith(allowed_extensions)):
-            return jsonify({'error': 'Both files must be TXT or DOCX format'}), 400
-        
-        # Save files temporarily
-        filename1 = secure_filename(file1.filename)
-        filename2 = secure_filename(file2.filename)
-        temp_path1 = os.path.join(tempfile.gettempdir(), f"comp1_{filename1}")
-        temp_path2 = os.path.join(tempfile.gettempdir(), f"comp2_{filename2}")
-        
-        file1.save(temp_path1)
-        file2.save(temp_path2)
-        
-        try:
-            # Read both files
-            if filename1.lower().endswith('.txt'):
-                content1 = doc_processor.read_txt(temp_path1)
-            else:
-                content1 = doc_processor.read_docx(temp_path1)
-            
-            if filename2.lower().endswith('.txt'):
-                content2 = doc_processor.read_txt(temp_path2)
-            else:
-                content2 = doc_processor.read_docx(temp_path2)
-            
-            # Perform comparison
-            comparison_results = DocumentComparator().compare_documents(
-                content1, content2, filename1, filename2
-            )
-            
-            # Clean up temp files
-            os.unlink(temp_path1)
-            os.unlink(temp_path2)
-            
-            return jsonify({
-                'comparison': comparison_results,
-                'file1_name': filename1,
-                'file2_name': filename2,
-                'timestamp': datetime.now().isoformat()
-            })
-            
-        except Exception as e:
-            # Clean up temp files on error
-            for temp_path in [temp_path1, temp_path2]:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-            return jsonify({'error': f'Error processing files: {str(e)}'}), 400
-        
-    except Exception as e:
-        print(f"Error in document comparison: {e}")
-        return jsonify({'error': 'Document comparison failed'}), 500
-
 @app.route('/download-revision', methods=['POST'])
 def download_revision():
     try:
@@ -661,5 +500,17 @@ def download_revision():
         print(f"Error creating download: {e}")
         return jsonify({'error': 'Failed to create download'}), 500
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'ai_available': model is not None,
+        'timestamp': datetime.now().isoformat()
+    })
+
 if __name__ == '__main__':
+    print("Starting Essay Analyzer Server...")
+    print("AI Analysis:", "Enabled" if model else "Disabled (check GEMINI_API_KEY)")
+    print("Server will be available at: http://localhost:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)

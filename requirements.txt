@@ -1,5 +1,6 @@
-flask
-flask-cors
+Flask
+Flask-CORS
 google-generativeai
 python-docx
 python-dotenv
+Werkzeug

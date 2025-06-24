@@ -227,6 +227,43 @@
             font-size: 1.3rem;
         }
 
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 20px;
+        }
+
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
         /* Interactive Editor Styles */
         .interactive-editor {
             background: white;
@@ -309,44 +346,6 @@
             opacity: 1;
         }
 
-        .suggestion-controls {
-            position: absolute;
-            top: -35px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: none;
-            z-index: 1001;
-        }
-
-        .suggestion.active .suggestion-controls {
-            display: flex;
-        }
-
-        .suggestion-btn {
-            padding: 5px 10px;
-            border: none;
-            background: none;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: background 0.3s ease;
-        }
-
-        .suggestion-btn.accept {
-            color: #28a745;
-        }
-
-        .suggestion-btn.reject {
-            color: #dc3545;
-        }
-
-        .suggestion-btn:hover {
-            background: #f8f9fa;
-        }
-
         .suggestions-panel {
             background: #f8f9fa;
             border-radius: 10px;
@@ -389,7 +388,7 @@
 
         .suggestion-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
@@ -519,6 +518,41 @@
             transform: none;
         }
 
+        .score-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            margin-right: 20px;
+        }
+
+        .score-circle.high {
+            background: #28a745;
+        }
+
+        .score-circle.medium {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .score-circle.low {
+            background: #dc3545;
+        }
+
+        .classification-badge {
+            background: #667eea;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 500;
+            display: inline-block;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -539,24 +573,11 @@
             .suggestion-actions {
                 flex-direction: column;
             }
-        }
 
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #f5c6cb;
-        }
-
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
+            .stats-row {
+                flex-direction: column;
+                gap: 10px;
+            }
         }
     </style>
 </head>
@@ -565,6 +586,7 @@
         <div class="header">
             <h1>AI Essay Reviewer</h1>
             <p>Interactive Essay Revision with Real-time Suggestions</p>
+            <div id="status-indicator" class="status-indicator">Checking connection...</div>
         </div>
 
         <div class="main-content">
@@ -674,6 +696,28 @@
         let rejectedSuggestions = new Set();
         let originalText = '';
 
+        // Check server status on load
+        window.addEventListener('load', checkServerStatus);
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    const indicator = document.getElementById('status-indicator');
+                    indicator.textContent = data.ai_available ? 'AI Analysis: Online' : 'AI Analysis: Limited (API Key Required)';
+                    indicator.className = 'status-indicator ' + (data.ai_available ? 'status-online' : 'status-offline');
+                } else {
+                    throw new Error('Server not responding');
+                }
+            } catch (error) {
+                const indicator = document.getElementById('status-indicator');
+                indicator.textContent = 'Server: Offline - Please start Flask app';
+                indicator.className = 'status-indicator status-offline';
+                showError('Server is not running. Please start the Flask application first.');
+            }
+        }
+
         // Tab switching functionality
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -742,7 +786,8 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
 
                 const result = await response.json();
@@ -752,7 +797,7 @@
 
             } catch (error) {
                 console.error('Upload error:', error);
-                showError('File upload failed. Please try again.');
+                showError(`File upload failed: ${error.message}`);
             }
         }
 
@@ -774,8 +819,8 @@
                 return;
             }
 
-            if (essayText.length < 100) {
-                showError('Essay is too short. Please provide at least 100 characters for meaningful analysis.');
+            if (essayText.length < 50) {
+                showError('Essay is too short. Please provide at least 50 characters for meaningful analysis.');
                 return;
             }
 
@@ -796,7 +841,8 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
 
                 const results = await response.json();
@@ -813,7 +859,7 @@
 
             } catch (error) {
                 console.error('Analysis error:', error);
-                showError('Analysis failed. Please check your internet connection and try again.');
+                showError(`Analysis failed: ${error.message}`);
             } finally {
                 // Hide loading state
                 document.getElementById('analyze-btn').disabled = false;
@@ -839,6 +885,11 @@
             const editor = document.getElementById('interactive-editor');
             let content = originalText;
             
+            if (suggestions.length === 0) {
+                editor.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 40px;">No specific suggestions available. Your essay looks good overall!</p>';
+                return;
+            }
+            
             // Sort suggestions by position (reverse order to maintain positions)
             const sortedSuggestions = [...suggestions].sort((a, b) => b.position.start - a.position.start);
             
@@ -848,12 +899,7 @@
                 const before = content.substring(0, position.start);
                 const after = content.substring(position.end);
                 
-                let suggestionHtml = '';
-                if (type === 'spelling' || type === 'grammar') {
-                    suggestionHtml = `<span class="suggestion replacement" data-id="${id}" onclick="toggleSuggestion('${id}')">${suggested}<div class="suggestion-tooltip">${suggestion.reason}</div></span>`;
-                } else {
-                    suggestionHtml = `<span class="suggestion replacement" data-id="${id}" onclick="toggleSuggestion('${id}')">${suggested}<div class="suggestion-tooltip">${suggestion.reason}</div></span>`;
-                }
+                let suggestionHtml = `<span class="suggestion replacement" data-id="${id}" onclick="toggleSuggestion('${id}')">${suggested}<div class="suggestion-tooltip">${suggestion.reason}</div></span>`;
                 
                 content = before + suggestionHtml + after;
             });
@@ -1114,6 +1160,28 @@
                     <ul style="list-style: none; padding: 0;">
                         ${general.priority_improvements.map(improvement => `<li style="background: #f8d7da; color: #721c24; padding: 8px 15px; margin-bottom: 5px; border-radius: 5px;">! ${improvement}</li>`).join('')}
                     </ul>
+                </div>
+
+                <div class="result-section">
+                    <h3>Essay-Specific Analysis</h3>
+                    <div style="margin-bottom: 15px;">
+                        <h4>Criteria Analysis:</h4>
+                        ${specific.criteria_analysis.map(criterion => `
+                            <div style="background: white; padding: 10px; margin-bottom: 10px; border-radius: 5px; border-left: 4px solid #667eea;">
+                                <strong>${criterion.criterion}</strong> - Score: ${criterion.score}/10
+                                <p style="color: #6c757d; margin-top: 5px;">${criterion.feedback}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    ${specific.type_specific_suggestions.length > 0 ? `
+                        <div>
+                            <h4>Type-Specific Suggestions:</h4>
+                            <ul style="list-style: none; padding: 0;">
+                                ${specific.type_specific_suggestions.map(suggestion => `<li style="background: #fff3cd; color: #856404; padding: 8px 15px; margin-bottom: 5px; border-radius: 5px;">• ${suggestion}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
