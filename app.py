@@ -462,6 +462,72 @@ def upload_file():
         print(f"Error in file upload: {e}")
         return jsonify({'error': 'File upload failed'}), 500
 
+@app.route('/compare', methods=['POST'])
+def compare_documents():
+    try:
+        if 'file1' not in request.files or 'file2' not in request.files:
+            return jsonify({'error': 'Two files are required for comparison'}), 400
+        
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        
+        if file1.filename == '' or file2.filename == '':
+            return jsonify({'error': 'Please select both files'}), 400
+        
+        # Check file types
+        allowed_extensions = ('.txt', '.docx')
+        if not (file1.filename.lower().endswith(allowed_extensions) and 
+                file2.filename.lower().endswith(allowed_extensions)):
+            return jsonify({'error': 'Both files must be TXT or DOCX format'}), 400
+        
+        # Save files temporarily
+        filename1 = secure_filename(file1.filename)
+        filename2 = secure_filename(file2.filename)
+        temp_path1 = os.path.join(tempfile.gettempdir(), f"comp1_{filename1}")
+        temp_path2 = os.path.join(tempfile.gettempdir(), f"comp2_{filename2}")
+        
+        file1.save(temp_path1)
+        file2.save(temp_path2)
+        
+        try:
+            # Read both files
+            if filename1.lower().endswith('.txt'):
+                content1 = doc_processor.read_txt(temp_path1)
+            else:
+                content1 = doc_processor.read_docx(temp_path1)
+            
+            if filename2.lower().endswith('.txt'):
+                content2 = doc_processor.read_txt(temp_path2)
+            else:
+                content2 = doc_processor.read_docx(temp_path2)
+            
+            # Perform comparison
+            comparison_results = DocumentComparator().compare_documents(
+                content1, content2, filename1, filename2
+            )
+            
+            # Clean up temp files
+            os.unlink(temp_path1)
+            os.unlink(temp_path2)
+            
+            return jsonify({
+                'comparison': comparison_results,
+                'file1_name': filename1,
+                'file2_name': filename2,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            # Clean up temp files on error
+            for temp_path in [temp_path1, temp_path2]:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            return jsonify({'error': f'Error processing files: {str(e)}'}), 400
+        
+    except Exception as e:
+        print(f"Error in document comparison: {e}")
+        return jsonify({'error': 'Document comparison failed'}), 500
+
 @app.route('/download-revision', methods=['POST'])
 def download_revision():
     try:
