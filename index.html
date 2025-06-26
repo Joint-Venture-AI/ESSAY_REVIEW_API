@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Analyzer - AI-Powered Writing Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1><i class="fas fa-pen-fancy"></i> Essay Analyzer</h1>
+            <p>AI-powered writing assistant for better essays</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section class="upload-section">
+            <div class="upload-card">
+                <h2><i class="fas fa-upload"></i> Upload Your Essay</h2>
+                <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-file-word upload-icon"></i>
+                    <p>Drag & drop your .docx file here or click to browse</p>
+                    <input type="file" id="essayFile" accept=".docx" hidden>
+                    <button class="btn btn-primary" onclick="document.getElementById('essayFile').click()">
+                        Choose File
+                    </button>
+                </div>
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <i class="fas fa-file-check"></i>
+                    <span id="fileName"></span>
+                    <button class="btn btn-success" id="analyzeBtn" onclick="analyzeEssay()">
+                        <i class="fas fa-search"></i> Analyze Essay
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyzing your essay...</p>
+        </div>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <!-- Essay Info Bar -->
+            <div class="essay-info-bar">
+                <div class="essay-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Essay Type:</span>
+                        <span class="stat-value" id="essayType">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Score:</span>
+                        <span class="stat-value score" id="essayScore">-</span>
+                    </div>
+                </div>
+                <div class="essay-controls">
+                    <select id="essayTypeSelect" class="essay-type-select">
+                        <option value="">Change Essay Type</option>
+                        <option value="Narrative Essay">Narrative Essay</option>
+                        <option value="Descriptive Essay">Descriptive Essay</option>
+                        <option value="Expository Essay">Expository Essay</option>
+                        <option value="Argumentative Essay">Argumentative Essay</option>
+                        <option value="Persuasive Essay">Persuasive Essay</option>
+                        <option value="Analytical Essay">Analytical Essay</option>
+                    </select>
+                    <button class="btn btn-outline" id="changeTypeBtn" onclick="changeEssayType()">
+                        <i class="fas fa-sync-alt"></i> Convert
+                    </button>
+                    <button class="btn btn-success" onclick="downloadEssay()">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="main-content">
+                <!-- Essay Editor -->
+                <div class="editor-section">
+                    <div class="editor-header">
+                        <h3><i class="fas fa-edit"></i> Essay Editor</h3>
+                        <div class="editor-legend">
+                            <span class="legend-item">
+                                <span class="addition-sample">Addition</span> - Click to accept
+                            </span>
+                            <span class="legend-item">
+                                <span class="deletion-sample">Deletion</span> - Click to accept
+                            </span>
+                        </div>
+                    </div>
+                    <div class="editor-container">
+                        <div class="editor" id="essayEditor" contenteditable="false"></div>
+                    </div>
+                </div>
+
+                <!-- Track Changes Panel -->
+                <div class="track-changes-section">
+                    <div class="track-changes-header">
+                        <h3><i class="fas fa-history"></i> Track Changes</h3>
+                        <span class="changes-count" id="changesCount">0 changes</span>
+                    </div>
+                    <div class="track-changes-container">
+                        <div class="track-changes-list" id="trackChangesList">
+                            <div class="no-changes">
+                                <i class="fas fa-clipboard-list"></i>
+                                <p>No changes yet</p>
+                                <small>Accept suggestions to see changes here</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggestions Panel -->
+            <div class="suggestions-panel">
+                <h3><i class="fas fa-lightbulb"></i> AI Suggestions</h3>
+                <div class="suggestions-list" id="suggestionsList"></div>
+            </div>
+        </section>
+
+        <!-- Compare Essays Section -->
+        <section class="compare-section">
+            <div class="compare-card">
+                <h2><i class="fas fa-balance-scale"></i> Compare Essays</h2>
+                <div class="compare-upload">
+                    <div class="compare-file">
+                        <label for="essay1">First Essay:</label>
+                        <input type="file" id="essay1" accept=".txt,.docx,.pdf">
+                    </div>
+                    <div class="compare-file">
+                        <label for="essay2">Second Essay:</label>
+                        <input type="file" id="essay2" accept=".txt,.docx,.pdf">
+                    </div>
+                    <button class="btn btn-primary" onclick="compareEssays()">
+                        <i class="fas fa-search"></i> Compare Essays
+                    </button>
+                </div>
+                <div class="compare-results" id="compareResults" style="display: none;">
+                    <div class="comparison-summary">
+                        <div class="draft-analysis">
+                            <h4>Draft 1 Analysis</h4>
+                            <p id="draft1Analysis"></p>
+                        </div>
+                        <div class="draft-analysis">
+                            <h4>Draft 2 Analysis</h4>
+                            <p id="draft2Analysis"></p>
+                        </div>
+                    </div>
+                    <div class="key-differences">
+                        <h4>Key Differences</h4>
+                        <div id="keyDifferences"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
